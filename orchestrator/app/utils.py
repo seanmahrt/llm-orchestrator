@@ -19,6 +19,7 @@ SESSION_TTL_HOURS = int(os.getenv("ORCHESTRATOR_SESSION_TTL_HOURS", "168"))
 SESSION_MAX_TURNS = int(os.getenv("ORCHESTRATOR_SESSION_MAX_TURNS", "12"))
 OLLAMA_TIMEOUT_SECONDS = int(os.getenv("ORCHESTRATOR_OLLAMA_TIMEOUT_SECONDS", "45"))
 OLLAMA_MAX_TOKENS = int(os.getenv("ORCHESTRATOR_OLLAMA_MAX_TOKENS", "220"))
+OLLAMA_STREAM = os.getenv("ORCHESTRATOR_OLLAMA_STREAM", "false").lower() == "true"
 
 
 def load_agent_config(agent_name: str) -> Dict[str, Any]:
@@ -234,7 +235,7 @@ async def _ollama_generate(
         "model": model,
         "prompt": prompt,
         "system": system_prompt,
-        "stream": True,
+        "stream": OLLAMA_STREAM,
         "options": {
             "num_predict": OLLAMA_MAX_TOKENS,
         },
@@ -259,6 +260,22 @@ async def _ollama_generate(
                         "model": model,
                         "endpoint": endpoint,
                         "error": body,
+                    }
+
+                if not OLLAMA_STREAM:
+                    body = await resp.json(content_type=None)
+                    response_text = str(body.get("response") or "").strip()
+                    if not response_text:
+                        response_text = "Ollama returned an empty response."
+                    return {
+                        "response": response_text,
+                        "provider": "ollama",
+                        "model": model,
+                        "endpoint": endpoint,
+                        "streaming_enabled": False,
+                        "chunks_received": 1,
+                        "done_received": bool(body.get("done", False)),
+                        "max_tokens": OLLAMA_MAX_TOKENS,
                     }
 
                 buffer = ""
@@ -316,7 +333,7 @@ async def _ollama_generate(
         "provider": "ollama",
         "model": model,
         "endpoint": endpoint,
-        "streaming_enabled": True,
+        "streaming_enabled": OLLAMA_STREAM,
         "chunks_received": chunk_count,
         "done_received": done_received,
         "max_tokens": OLLAMA_MAX_TOKENS,

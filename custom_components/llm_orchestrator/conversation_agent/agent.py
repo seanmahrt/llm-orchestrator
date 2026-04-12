@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import aiohttp
 
 from homeassistant.components.conversation import (
@@ -117,7 +118,7 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
                         conversation_id=conv_id,
                     )
 
-        except TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError):
             _LOGGER.error("Orchestrator request timed out")
 
             intent = IntentResponse(language="en")

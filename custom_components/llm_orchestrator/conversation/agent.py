@@ -7,17 +7,19 @@ from homeassistant.components.conversation import (
     ConversationResult,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
+
+from ..const import CONF_HOST, CONF_PORT
 
 _LOGGER = logging.getLogger(__name__)
-
-ORCHESTRATOR_URL = "http://localhost:8000/orchestrator/run-agent"
 
 
 class LLMOrchestratorConversationAgent(AbstractConversationAgent):
     """Conversation agent that routes all messages through the orchestrator router."""
 
-    def __init__(self, hass: HomeAssistant):
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
         self.hass = hass
+        self.entry = entry  # store config entry so we can read host/port
 
     @property
     def attribution(self):
@@ -34,6 +36,11 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
         text = user_input.text
         conv_id = user_input.conversation_id or "default"
 
+        # ⭐ Build orchestrator URL dynamically
+        host = self.entry.data[CONF_HOST]
+        port = self.entry.data[CONF_PORT]
+        url = f"http://{host}:{port}/orchestrator/run-agent"
+
         payload = {
             "agent_name": "router",
             "payload": {
@@ -42,11 +49,11 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
             },
         }
 
-        _LOGGER.debug("Sending to orchestrator: %s", payload)
+        _LOGGER.debug("Sending to orchestrator at %s: %s", url, payload)
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(ORCHESTRATOR_URL, json=payload) as resp:
+                async with session.post(url, json=payload) as resp:
                     if resp.status != 200:
                         _LOGGER.error("Orchestrator returned HTTP %s", resp.status)
                         return ConversationResult(

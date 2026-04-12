@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -13,8 +15,10 @@ from .api import OrchestratorApiClient
 from .const import CONF_HOST, CONF_PORT, DOMAIN
 from .services import async_register_services, async_unregister_services
 
+PLATFORMS = ["conversation"]
 
-async def async_setup(_hass: HomeAssistant, _config: dict) -> bool:
+
+async def async_setup(_hass: HomeAssistant, _config: dict[str, Any]) -> bool:
     """Set up the integration from YAML (not used)."""
     return True
 
@@ -32,15 +36,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await async_register_services(hass)
 
-    # NOTE:
-    # Conversation agent registration happens in conversation.py,
-    # because manifest.json declares `"conversation": ["conversation"]`.
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(
+        entry, PLATFORMS
+    )
+
+    if not unload_ok:
+        return False
+
     domain_data = hass.data.get(DOMAIN, {})
     domain_data.pop(entry.entry_id, None)
 

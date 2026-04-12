@@ -1,5 +1,4 @@
 {
-  "//": "FILE: custom_components/llm_orchestrator/manifest.json",
   "domain": "llm_orchestrator",
   "name": "LLM Orchestrator",
   "version": "0.1.0",
@@ -11,5 +10,6 @@
   "integration_type": "hub",
   "config_flow": true,
   "loggers": ["custom_components.llm_orchestrator"],
+  "platforms": ["conversation"],
   "conversation": ["conversation"]
 }

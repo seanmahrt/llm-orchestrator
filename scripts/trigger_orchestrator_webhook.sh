@@ -3,12 +3,12 @@ set -uo pipefail
 
 # Sends a signed LAN webhook request to the orchestrator deploy endpoint.
 # Env vars:
-#   ORCH_WEBHOOK_URL    (default: http://192.168.75.95:8000/webhook/github)
+#   ORCH_WEBHOOK_URL    (default: http://192.168.75.194:8000/webhook/github)
 #   ORCH_WEBHOOK_SECRET (optional, but recommended)
 #   ORCH_WEBHOOK_TIMEOUT (default: 8)
 #   ORCH_WEBHOOK_CONNECT_TIMEOUT (default: 2)
 
-ORCH_WEBHOOK_URL="${ORCH_WEBHOOK_URL:-http://192.168.75.95:8000/webhook/github}"
+ORCH_WEBHOOK_URL="${ORCH_WEBHOOK_URL:-http://192.168.75.194:8000/webhook/github}"
 ORCH_WEBHOOK_SECRET="${ORCH_WEBHOOK_SECRET:-}"
 ORCH_WEBHOOK_TIMEOUT="${ORCH_WEBHOOK_TIMEOUT:-8}"
 ORCH_WEBHOOK_CONNECT_TIMEOUT="${ORCH_WEBHOOK_CONNECT_TIMEOUT:-2}"
@@ -17,7 +17,7 @@ BRANCH="${1:-$(git rev-parse --abbrev-ref HEAD)}"
 LOCAL_SHA="${2:-$(git rev-parse HEAD)}"
 UTC_NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-PAYLOAD="{\"ref\":\"refs/heads/${BRANCH}\",\"after\":\"${LOCAL_SHA}\",\"source\":\"dev-post-push\",\"timestamp\":\"${UTC_NOW}\"}"
+PAYLOAD="{\"ref\":\"refs/heads/${BRANCH}\",\"after\":\"${LOCAL_SHA}\",\"source\":\"dev-pre-push\",\"timestamp\":\"${UTC_NOW}\"}"
 
 CURL_ARGS=(
   --silent

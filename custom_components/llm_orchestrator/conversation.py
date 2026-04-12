@@ -10,7 +10,7 @@ from homeassistant.components.conversation import async_set_agent
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
-from custom_components.llm_orchestrator.conversation.agent import (
+from custom_components.llm_orchestrator.conversation_agent.agent import (
     LLMOrchestratorConversationAgent,
 )
 

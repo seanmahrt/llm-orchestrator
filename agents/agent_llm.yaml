@@ -1,7 +1,7 @@
 name: llm
 type: language_model
 provider: ollama
-model: llama3:8b
+model: mistral:7b
 endpoint: http://192.168.75.95:11434
 description: >
   Local Ollama-backed LLM agent used for reasoning and text generation.

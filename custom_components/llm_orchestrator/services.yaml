@@ -1,0 +1,17 @@
+send:
+  name: Send
+  description: Send a message to the external LLM Orchestrator API.
+  fields:
+    message:
+      name: Message
+      description: Text input sent to the selected orchestrator agent.
+      required: true
+      selector:
+        text:
+    agent:
+      name: Agent
+      description: Agent name to invoke in the orchestrator.
+      required: false
+      default: echo
+      selector:
+        text:

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -14,6 +15,9 @@ from homeassistant.core import HomeAssistant
 from .api import OrchestratorApiClient
 from .const import CONF_HOST, CONF_PORT, DOMAIN
 from .services import async_register_services, async_unregister_services
+
+_LOGGER = logging.getLogger(__name__)
+PLATFORMS = ["conversation"]
 
 
 async def async_setup(_hass: HomeAssistant, _config: dict[str, Any]) -> bool:
@@ -33,17 +37,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = client
 
     await async_register_services(hass)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    _LOGGER.debug("LLM Orchestrator entry %s setup complete", entry.entry_id)
 
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(
+        entry, PLATFORMS
+    )
+    if not unload_ok:
+        return False
+
     domain_data = hass.data.get(DOMAIN, {})
     domain_data.pop(entry.entry_id, None)
 
     if not domain_data:
         await async_unregister_services(hass)
         hass.data.pop(DOMAIN, None)
+
+    _LOGGER.debug("LLM Orchestrator entry %s unloaded", entry.entry_id)
 
     return True

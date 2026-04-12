@@ -22,5 +22,9 @@ async def run_agent(request: RunAgentRequest) -> RunAgentResponse:
             detail=f"Agent config not found: {request.agent_name}",
         )
 
-    result = run_agent_logic(agent_cfg, request.payload, all_agents=all_agents)
+    result = await run_agent_logic(
+        agent_cfg,
+        request.payload,
+        all_agents=all_agents,
+    )
     return RunAgentResponse(agent_name=request.agent_name, result=result)

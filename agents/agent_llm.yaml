@@ -1,5 +1,7 @@
 name: llm
 type: language_model
-model: gpt-4
+provider: ollama
+model: llama3.2
+endpoint: http://192.168.75.95:11434
 description: >
-  General-purpose LLM agent used for reasoning and text generation.
+  Local Ollama-backed LLM agent used for reasoning and text generation.

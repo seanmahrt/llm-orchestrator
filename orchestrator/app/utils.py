@@ -1,6 +1,11 @@
-import yaml
+import os
+import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict
+
+import aiohttp
+import yaml
 
 AGENTS_DIR = Path(__file__).resolve().parents[2] / "agents"
 
@@ -58,6 +63,158 @@ def _render_agent_response(
     return f"Agent '{name}' received: {message}"
 
 
+async def _run_llm_agent(
+    agent_cfg: Dict[str, Any], payload: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Run language model agent through a local Ollama endpoint."""
+    message = _payload_message(payload)
+    model = str(agent_cfg.get("model") or "llama3.2")
+    endpoint = str(
+        agent_cfg.get("endpoint")
+        or os.getenv("OLLAMA_BASE_URL")
+        or "http://127.0.0.1:11434"
+    ).rstrip("/")
+    url = f"{endpoint}/api/generate"
+
+    request_payload = {
+        "model": model,
+        "prompt": message,
+        "stream": False,
+    }
+
+    timeout = aiohttp.ClientTimeout(total=30)
+
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, json=request_payload) as resp:
+                if resp.status >= 400:
+                    body = await resp.text()
+                    return {
+                        "response": (
+                            "I could not reach the local Ollama service. "
+                            f"HTTP {resp.status}."
+                        ),
+                        "provider": "ollama",
+                        "model": model,
+                        "endpoint": endpoint,
+                        "error": body,
+                    }
+
+                data = await resp.json(content_type=None)
+
+    except (aiohttp.ClientError, TimeoutError) as err:
+        return {
+            "response": (
+                "I could not connect to Ollama. "
+                "Check that the Ollama service is reachable "
+                "from the orchestrator."
+            ),
+            "provider": "ollama",
+            "model": model,
+            "endpoint": endpoint,
+            "error": str(err),
+        }
+
+    response = str(data.get("response") or "").strip()
+    if not response:
+        response = "Ollama returned an empty response."
+
+    return {
+        "response": response,
+        "provider": "ollama",
+        "model": model,
+        "endpoint": endpoint,
+    }
+
+
+async def _run_weather_agent(
+    agent_cfg: Dict[str, Any], payload: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Run weather agent using OpenWeather if configured."""
+    endpoint = str(agent_cfg.get("endpoint") or "").rstrip("/")
+    api_key = os.getenv("OPENWEATHER_API_KEY", "").strip()
+    query = str(payload.get("location") or "Boston,US")
+
+    if not api_key:
+        return {
+            "response": (
+                "Weather agent is configured but "
+                "OPENWEATHER_API_KEY is missing."
+            ),
+            "endpoint": endpoint,
+        }
+
+    params = {
+        "q": query,
+        "appid": api_key,
+        "units": "metric",
+    }
+
+    timeout = aiohttp.ClientTimeout(total=15)
+
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(endpoint, params=params) as resp:
+                if resp.status >= 400:
+                    body = await resp.text()
+                    return {
+                        "response": (
+                            f"Weather API request failed with {resp.status}."
+                        ),
+                        "endpoint": endpoint,
+                        "error": body,
+                    }
+                data = await resp.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError) as err:
+        return {
+            "response": "Weather API is unreachable right now.",
+            "endpoint": endpoint,
+            "error": str(err),
+        }
+
+    main = data.get("main", {})
+    weather = data.get("weather", [{}])
+    description = str(weather[0].get("description") or "unknown").strip()
+    temp = main.get("temp")
+
+    return {
+        "response": (
+            "Current weather for "
+            f"{query}: {description}, {temp} degrees Celsius."
+        ),
+        "endpoint": endpoint,
+        "query": query,
+    }
+
+
+async def _run_scheduler_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Parse simple schedule requests from natural language."""
+    message = _payload_message(payload)
+    lowered = message.lower()
+
+    minutes_match = re.search(r"in\s+(\d+)\s+minute", lowered)
+    hours_match = re.search(r"in\s+(\d+)\s+hour", lowered)
+
+    if minutes_match:
+        delta = timedelta(minutes=int(minutes_match.group(1)))
+    elif hours_match:
+        delta = timedelta(hours=int(hours_match.group(1)))
+    else:
+        return {
+            "response": (
+                "Scheduler can parse phrases like "
+                "'in 15 minutes' or 'in 2 hours'."
+            )
+        }
+
+    due = datetime.now(timezone.utc) + delta
+    due_utc = due.isoformat().replace("+00:00", "Z")
+    return {
+        "response": f"Scheduled request acknowledged for {due_utc}.",
+        "scheduled_for": due_utc,
+    }
+
+
 def _route_message(
     router_cfg: Dict[str, Any],
     message: str,
@@ -87,7 +244,7 @@ def _route_message(
     return "router"
 
 
-def run_agent_logic(
+async def run_agent_logic(
     agent_cfg: Dict[str, Any],
     payload: Dict[str, Any],
     all_agents: Dict[str, Dict[str, Any]] | None = None,
@@ -104,7 +261,26 @@ def run_agent_logic(
         selected_agent = _route_message(agent_cfg, message, agents)
         selected_cfg = agents.get(selected_agent, agent_cfg)
 
-    response = _render_agent_response(selected_cfg, payload)
+    selected_type = str(selected_cfg.get("type", "generic"))
+
+    if selected_agent == "router":
+        response_data = {
+            "response": _render_agent_response(selected_cfg, payload),
+        }
+    elif selected_type == "language_model":
+        response_data = await _run_llm_agent(selected_cfg, payload)
+    elif selected_type == "http_api":
+        response_data = await _run_weather_agent(selected_cfg, payload)
+    elif selected_type == "scheduler":
+        response_data = await _run_scheduler_agent(payload)
+    else:
+        response_data = {
+            "response": _render_agent_response(selected_cfg, payload),
+        }
+
+    response = str(response_data.get("response") or "").strip()
+    if not response:
+        response = "No response produced."
 
     return {
         "description": f"Ran agent '{agent_name}'",
@@ -113,4 +289,5 @@ def run_agent_logic(
         "available_agents": sorted(agents.keys()) if agents else [agent_name],
         "config": agent_cfg,
         "input": payload,
+        "agent_result": response_data,
     }

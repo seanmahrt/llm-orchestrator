@@ -5,19 +5,22 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.components.conversation import async_set_agent
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
-from custom_components.llm_orchestrator.conversation_agent.agent import (
-    LLMOrchestratorConversationAgent,
-)
+from .conversation_agent import LLMOrchestratorConversationAgent
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    _async_add_entities: Any = None,
+) -> bool:
     """Set up the conversation agent."""
     agent = LLMOrchestratorConversationAgent(hass, entry)
     async_set_agent(hass, entry.entry_id, agent)

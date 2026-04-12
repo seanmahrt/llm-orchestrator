@@ -17,6 +17,8 @@ SESSION_META_DIR.mkdir(parents=True, exist_ok=True)
 
 SESSION_TTL_HOURS = int(os.getenv("ORCHESTRATOR_SESSION_TTL_HOURS", "168"))
 SESSION_MAX_TURNS = int(os.getenv("ORCHESTRATOR_SESSION_MAX_TURNS", "12"))
+OLLAMA_TIMEOUT_SECONDS = int(os.getenv("ORCHESTRATOR_OLLAMA_TIMEOUT_SECONDS", "45"))
+OLLAMA_MAX_TOKENS = int(os.getenv("ORCHESTRATOR_OLLAMA_MAX_TOKENS", "220"))
 
 
 def load_agent_config(agent_name: str) -> Dict[str, Any]:
@@ -201,6 +203,18 @@ def _is_summary_request(message: str) -> bool:
     return asks_summary and targets_history
 
 
+def _is_identity_only_reply(message: str) -> bool:
+    """Heuristic: this message is likely only giving a name."""
+    cleaned = message.strip()
+    if not cleaned:
+        return False
+    if "?" in cleaned or len(cleaned) > 48:
+        return False
+    if _extract_name_from_message(cleaned) is None:
+        return False
+    return len(cleaned.split()) <= 6
+
+
 def _history_as_text(history: list[tuple[str, str]]) -> str:
     lines: list[str] = []
     for role, text in history:
@@ -221,11 +235,15 @@ async def _ollama_generate(
         "prompt": prompt,
         "system": system_prompt,
         "stream": True,
+        "options": {
+            "num_predict": OLLAMA_MAX_TOKENS,
+        },
     }
 
-    timeout = aiohttp.ClientTimeout(total=60)
+    timeout = aiohttp.ClientTimeout(total=OLLAMA_TIMEOUT_SECONDS)
     accumulated_response = ""
     chunk_count = 0
+    done_received = False
 
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -243,16 +261,40 @@ async def _ollama_generate(
                         "error": body,
                     }
 
-                async for line in resp.content:
-                    if not line:
+                buffer = ""
+                async for raw in resp.content.iter_chunked(4096):
+                    if not raw:
                         continue
-                    try:
-                        chunk = json.loads(line)
+                    buffer += raw.decode("utf-8", errors="ignore")
+
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            chunk = json.loads(line)
+                        except ValueError:
+                            continue
+
                         chunk_text = str(chunk.get("response") or "")
                         if chunk_text:
                             accumulated_response += chunk_text
                             chunk_count += 1
-                    except (ValueError, KeyError):
+                        if bool(chunk.get("done", False)):
+                            done_received = True
+
+                trailing = buffer.strip()
+                if trailing:
+                    try:
+                        chunk = json.loads(trailing)
+                        chunk_text = str(chunk.get("response") or "")
+                        if chunk_text:
+                            accumulated_response += chunk_text
+                            chunk_count += 1
+                        if bool(chunk.get("done", False)):
+                            done_received = True
+                    except ValueError:
                         pass
 
     except (aiohttp.ClientError, TimeoutError) as err:
@@ -276,6 +318,8 @@ async def _ollama_generate(
         "endpoint": endpoint,
         "streaming_enabled": True,
         "chunks_received": chunk_count,
+        "done_received": done_received,
+        "max_tokens": OLLAMA_MAX_TOKENS,
     }
 
 
@@ -371,12 +415,27 @@ async def _run_llm_agent(
     """Run language model agent through a local Ollama endpoint with streaming."""
     _cleanup_expired_sessions()
     message = _payload_message(payload)
+    prior_meta = _load_session_meta(session_id)
+    was_awaiting_name = bool(prior_meta.get("awaiting_name", False))
     person_key, prompt_for_name = _resolve_person_key(payload, session_id, message)
     if prompt_for_name:
         return {
             "response": prompt_for_name,
             "session_id": session_id,
             "needs_identity": True,
+        }
+
+    if was_awaiting_name and _is_identity_only_reply(message):
+        response = "Thanks. I will remember that. What would you like to do next?"
+        memory_key = person_key or session_id
+        history = _load_session_history(memory_key)
+        updated_history = history + [("user", message), ("assistant", response)]
+        _save_session_history(memory_key, updated_history)
+        return {
+            "response": response,
+            "provider": "memory",
+            "person_key": person_key,
+            "session_id": session_id,
         }
 
     memory_key = person_key or session_id

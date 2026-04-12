@@ -79,7 +79,8 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
         _LOGGER.debug("Sending to orchestrator at %s: %s", url, payload)
 
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=75)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(url, json=payload) as resp:
                     if resp.status != 200:
                         _LOGGER.error(
@@ -115,6 +116,19 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
                         response=intent,
                         conversation_id=conv_id,
                     )
+
+        except TimeoutError:
+            _LOGGER.error("Orchestrator request timed out")
+
+            intent = IntentResponse(language="en")
+            intent.async_set_speech(
+                "The orchestrator is taking too long to respond. Please try again."
+            )
+
+            return ConversationResult(
+                response=intent,
+                conversation_id=conv_id,
+            )
 
         except Exception as e:
             _LOGGER.exception("Error calling orchestrator: %s", e)

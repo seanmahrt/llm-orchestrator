@@ -1,0 +1,15 @@
+name: llm_ultra_light
+type: language_model
+description: Ultra-lightweight model for simple factual queries (TinyLlama 1.1B)
+provider: ollama
+model: tinyllama:latest
+endpoint: http://192.168.75.95:11434
+use_case:
+  - factual_lookup
+  - simple_qa
+  - greetings
+  - time_dates
+complexity_threshold: trivial
+performance_profile: ultra_fast
+memory_footprint: minimal
+recommended_for_cpu: true

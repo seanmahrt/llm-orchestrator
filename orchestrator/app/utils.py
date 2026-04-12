@@ -259,16 +259,24 @@ def _route_message(
 
             # Check if any pattern keyword appears in the message
             for pattern in patterns:
-                if pattern in lowered and target_agent in agents:
-                    return target_agent
+                if pattern in lowered:
+                    # Try primary agent; fall back to hierarchy if unavailable
+                    if target_agent in agents:
+                        return target_agent
+                    # Use fallback hierarchy if agent unavailable
+                    fallback_hierarchy = router_cfg.get("fallback_hierarchy", [])
+                    for fallback in fallback_hierarchy:
+                        if fallback in agents:
+                            return fallback
+                    break
 
     # Fallback agent
     fallback = str(router_cfg.get("fallback_agent", "")).strip()
     if fallback and fallback in agents:
         return fallback
 
-    # Final fallback: check for any LLM agents
-    for candidate in ("llm_fast", "llm_capable", "llm"):
+    # Final fallback: check for any LLM agents in order of efficiency
+    for candidate in ("llm_ultra_light", "llm_phi_fast", "llm_fast", "llm_capable", "llm"):
         if candidate in agents:
             return candidate
 

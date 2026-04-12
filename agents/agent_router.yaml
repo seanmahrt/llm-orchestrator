@@ -1,26 +1,14 @@
 name: router
 type: router
-description: Smart router that selects the correct agent based on intent, user context, and session history.
+description: Smart Orchestrator router agent
 
-# Enable LLM-based routing
 llm_routing: true
-
-# Model used for routing decisions
-model: gpt-4o-mini
-
-# Enable session-aware routing
 session_memory: true
-
-# Enable user-aware routing
 user_context: true
-
-# Fallback agent if routing confidence is low
+model: gpt-4o-mini
 fallback_agent: llm
-
-# Confidence threshold for LLM routing
 confidence_threshold: 0.55
 
-# Static routing hints (fast-path rules)
 routes:
   - match: "weather"
     agent: weather
@@ -30,3 +18,6 @@ routes:
     agent: weather
   - match: "echo"
     agent: echo
+
+# NEW: required for Home Assistant
+response_template: "Router selected agent '{{ selected_agent }}' for message '{{ message }}'."

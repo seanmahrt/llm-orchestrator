@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -66,7 +67,7 @@ def _render_agent_response(
 async def _run_llm_agent(
     agent_cfg: Dict[str, Any], payload: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Run language model agent through a local Ollama endpoint."""
+    """Run language model agent through a local Ollama endpoint with streaming."""
     message = _payload_message(payload)
     model = str(agent_cfg.get("model") or "llama3.2")
     endpoint = str(
@@ -79,10 +80,12 @@ async def _run_llm_agent(
     request_payload = {
         "model": model,
         "prompt": message,
-        "stream": False,
+        "stream": True,  # Enable streaming for responsive UI
     }
 
-    timeout = aiohttp.ClientTimeout(total=30)
+    timeout = aiohttp.ClientTimeout(total=60)
+    accumulated_response = ""
+    chunk_count = 0
 
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -100,7 +103,18 @@ async def _run_llm_agent(
                         "error": body,
                     }
 
-                data = await resp.json(content_type=None)
+                # Stream response chunks line-by-line
+                async for line in resp.content:
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                        chunk_text = str(chunk.get("response") or "")
+                        if chunk_text:
+                            accumulated_response += chunk_text
+                            chunk_count += 1
+                    except (ValueError, KeyError):
+                        pass
 
     except (aiohttp.ClientError, TimeoutError) as err:
         return {
@@ -115,7 +129,7 @@ async def _run_llm_agent(
             "error": str(err),
         }
 
-    response = str(data.get("response") or "").strip()
+    response = accumulated_response.strip()
     if not response:
         response = "Ollama returned an empty response."
 
@@ -124,6 +138,8 @@ async def _run_llm_agent(
         "provider": "ollama",
         "model": model,
         "endpoint": endpoint,
+        "streaming_enabled": True,
+        "chunks_received": chunk_count,
     }
 
 

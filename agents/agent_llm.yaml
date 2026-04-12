@@ -1,0 +1,5 @@
+name: llm
+type: language_model
+model: gpt-4
+description: >
+  General-purpose LLM agent used for reasoning and text generation.

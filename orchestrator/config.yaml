@@ -1,0 +1,3 @@
+service:
+  name: orchestrator
+  api_prefix: /orchestrator

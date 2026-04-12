@@ -1,0 +1,14 @@
+orchestrator:
+  host: 0.0.0.0
+  port: 8000
+
+logging:
+  level: INFO
+
+agents:
+  - name: llm
+    config: agents/agent_llm.yaml
+  - name: weather
+    config: agents/agent_weather.yaml
+  - name: scheduler
+    config: agents/agent_scheduler.yaml

@@ -1,0 +1,4 @@
+name: scheduler
+type: scheduler
+description: >
+  Schedules and sequences multi-step workflows across agents.

@@ -1,0 +1,5 @@
+name: weather
+type: http_api
+endpoint: https://api.openweathermap.org/data/2.5/weather
+description: >
+  Weather agent used for fetching current conditions and forecasts.

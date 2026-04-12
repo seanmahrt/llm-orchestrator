@@ -5,8 +5,8 @@ from homeassistant.components.conversation import (
     AbstractConversationAgent,
     ConversationInput,
     ConversationResult,
+    ConversationResponse,   # ⭐ correct import for your HA version
 )
-from homeassistant.components.conversation.models import ConversationResponse
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
@@ -20,7 +20,7 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
         self.hass = hass
-        self.entry = entry  # store config entry so we can read host/port
+        self.entry = entry
 
     @property
     def attribution(self):
@@ -28,16 +28,12 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
 
     @property
     def supported_languages(self) -> list[str]:
-        """Return the list of supported languages."""
         return ["en"]
 
     async def async_process(self, user_input: ConversationInput) -> ConversationResult:
-        """Process a conversation request using the orchestrator router."""
-
         text = user_input.text
         conv_id = user_input.conversation_id or "default"
 
-        # ⭐ Build orchestrator URL dynamically
         host = self.entry.data[CONF_HOST]
         port = self.entry.data[CONF_PORT]
         url = f"http://{host}:{port}/orchestrator/run-agent"

@@ -4,6 +4,7 @@
   "codeowners": [
     "@seanm"
   ],
+  "conversation": true,
   "config_flow": true,
   "documentation": "https://github.com/seanm/llm-orchestrator",
   "integration_type": "service",

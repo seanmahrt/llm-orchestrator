@@ -1,20 +1,23 @@
+# =====================================================================
+# FILE: custom_components/llm_orchestrator/__init__.py
+# =====================================================================
+
 """The LLM Orchestrator integration."""
 
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.components.conversation import async_set_agent
 
 from .api import OrchestratorApiClient
 from .const import CONF_HOST, CONF_PORT, DOMAIN
 from .services import async_register_services, async_unregister_services
-from .conversation import LLMOrchestratorConversationAgent
 
 
 async def async_setup(_hass: HomeAssistant, _config: dict) -> bool:
     """Set up the integration from YAML (not used)."""
     return True
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up LLM Orchestrator from a config entry."""
@@ -29,10 +32,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await async_register_services(hass)
 
-    # ⭐ Correct Conversation Agent registration for 2026 HA builds
-    agent = LLMOrchestratorConversationAgent(hass, entry)
-    async_set_agent(hass, entry, agent)
-
+    # NOTE:
+    # Conversation agent registration happens in conversation.py,
+    # because manifest.json declares `"conversation": ["conversation"]`.
 
     return True
 

@@ -1,13 +1,12 @@
 import logging
 import aiohttp
-import inspect
 
 from homeassistant.components.conversation import (
     AbstractConversationAgent,
     ConversationInput,
     ConversationResult,
 )
-from homeassistant.components.conversation import models as conv_models
+from homeassistant.helpers.intent import IntentResponse
 
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
@@ -23,29 +22,6 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
         self.hass = hass
         self.entry = entry
-
-        # ⭐ Log available conversation model classes at startup
-        try:
-            model_attrs = dir(conv_models)
-            _LOGGER.warning("Conversation models module attributes: %s", model_attrs)
-
-            classes = [
-                (name, getattr(conv_models, name))
-                for name in model_attrs
-                if isinstance(getattr(conv_models, name), type)
-            ]
-            for name, cls in classes:
-                _LOGGER.warning("Conversation model class: %s -> %s", name, cls)
-
-                # Try to inspect constructor signature
-                try:
-                    sig = inspect.signature(cls)
-                    _LOGGER.warning("Constructor for %s: %s", name, sig)
-                except Exception:
-                    pass
-
-        except Exception as e:
-            _LOGGER.error("Error introspecting conversation models: %s", e)
 
     @property
     def attribution(self):
@@ -79,19 +55,15 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
                     if resp.status != 200:
                         _LOGGER.error("Orchestrator returned HTTP %s", resp.status)
 
-                        result = ConversationResult(
-                            response={
-                                "speech": {
-                                    "plain": {
-                                        "speech": "I had trouble contacting the orchestrator.",
-                                        "extra_data": {},
-                                    }
-                                }
-                            }
+                        intent = IntentResponse(language="en")
+                        intent.async_set_speech(
+                            "I had trouble contacting the orchestrator."
                         )
 
-                        _LOGGER.warning("ConversationResult object (error case): %s", result)
-                        return result
+                        return ConversationResult(
+                            response=intent,
+                            conversation_id=conv_id,
+                        )
 
                     data = await resp.json()
                     _LOGGER.debug("Received from orchestrator: %s", data)
@@ -101,35 +73,23 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
                         or "I didn't get a response from the orchestrator."
                     )
 
-                    result = ConversationResult(
-                        response={
-                            "speech": {
-                                "plain": {
-                                    "speech": response_text,
-                                    "extra_data": {},
-                                }
-                            }
-                        }
+                    intent = IntentResponse(language="en")
+                    intent.async_set_speech(response_text)
+
+                    return ConversationResult(
+                        response=intent,
+                        conversation_id=conv_id,
                     )
-
-                    # ⭐ Log the actual ConversationResult object HA will receive
-                    _LOGGER.warning("ConversationResult object (normal case): %s", result)
-
-                    return result
 
         except Exception as e:
             _LOGGER.exception("Error calling orchestrator: %s", e)
 
-            result = ConversationResult(
-                response={
-                    "speech": {
-                        "plain": {
-                            "speech": "Something went wrong talking to the orchestrator.",
-                            "extra_data": {},
-                        }
-                    }
-                }
+            intent = IntentResponse(language="en")
+            intent.async_set_speech(
+                "Something went wrong talking to the orchestrator."
             )
 
-            _LOGGER.warning("ConversationResult object (exception case): %s", result)
-            return result
+            return ConversationResult(
+                response=intent,
+                conversation_id=conv_id,
+            )

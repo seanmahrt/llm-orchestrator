@@ -23,8 +23,8 @@ MODEL_MEMORY_MAP = {
 }
 
 # Reserved memory for system and other services (MB)
-SYSTEM_RESERVE_MB = 800  # OS, Python orchestrator, etc.
-BUFFER_MB = 500  # Safety buffer for spikes
+SYSTEM_RESERVE_MB = 500  # OS, Python orchestrator, etc.
+BUFFER_MB = 200  # Safety buffer for spikes
 
 
 class ModelMemoryManager:

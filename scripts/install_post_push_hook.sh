@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HOOK_PATH="${REPO_ROOT}/.git/hooks/post-push"
+HOOK_PATH="${REPO_ROOT}/.git/hooks/pre-push"
 TRIGGER_SCRIPT="${REPO_ROOT}/scripts/trigger_orchestrator_webhook.sh"
 
 if [[ ! -d "${REPO_ROOT}/.git/hooks" ]]; then
@@ -17,7 +17,7 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 TRIGGER_SCRIPT="${REPO_ROOT}/scripts/trigger_orchestrator_webhook.sh"
 
-# post-push receives refs on stdin; keep first line for branch context if present
+# pre-push receives refs on stdin; keep first line for branch context if present
 FIRST_REF_LINE=""
 if IFS= read -r FIRST_REF_LINE; then
   :
@@ -28,16 +28,16 @@ LOCAL_SHA="$(git rev-parse HEAD)"
 
 if [[ -x "${TRIGGER_SCRIPT}" ]]; then
   if ! "${TRIGGER_SCRIPT}" "${BRANCH}" "${LOCAL_SHA}"; then
-    echo "post-push: webhook trigger failed" >&2
+    echo "pre-push: webhook trigger failed" >&2
   fi
 else
-  echo "post-push: missing trigger script at ${TRIGGER_SCRIPT}" >&2
+  echo "pre-push: missing trigger script at ${TRIGGER_SCRIPT}" >&2
 fi
 EOF
 
 chmod +x "${HOOK_PATH}"
 chmod +x "${TRIGGER_SCRIPT}"
 
-echo "Installed git post-push hook at ${HOOK_PATH}"
+echo "Installed git pre-push hook at ${HOOK_PATH}"
 echo "Set ORCH_WEBHOOK_URL and ORCH_WEBHOOK_SECRET in your shell/profile for signing."
-echo "Hook is non-blocking: push succeeds even if webhook is unreachable."
+echo "Hook is non-blocking: push continues even if webhook is unreachable."

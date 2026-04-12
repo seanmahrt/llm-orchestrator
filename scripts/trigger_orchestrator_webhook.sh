@@ -34,7 +34,7 @@ CURL_ARGS=(
 
 if [[ -n "${ORCH_WEBHOOK_SECRET}" ]]; then
   if ! command -v openssl >/dev/null 2>&1; then
-    echo "post-push: openssl not found; sending unsigned webhook" >&2
+    echo "push-hook: openssl not found; sending unsigned webhook" >&2
     ORCH_WEBHOOK_SECRET=""
   fi
 
@@ -57,11 +57,11 @@ if [[ -n "${ORCH_WEBHOOK_SECRET}" ]]; then
 fi
 
 if RESPONSE="$(curl "${CURL_ARGS[@]}" 2>&1)"; then
-  echo "post-push: webhook triggered (${ORCH_WEBHOOK_URL})"
-  echo "post-push: ${RESPONSE}"
+  echo "push-hook: webhook triggered (${ORCH_WEBHOOK_URL})"
+  echo "push-hook: ${RESPONSE}"
 else
-  echo "post-push: webhook unavailable (${ORCH_WEBHOOK_URL}); continuing push" >&2
-  echo "post-push: ${RESPONSE}" >&2
+  echo "push-hook: webhook unavailable (${ORCH_WEBHOOK_URL}); continuing push" >&2
+  echo "push-hook: ${RESPONSE}" >&2
 fi
 
 exit 0

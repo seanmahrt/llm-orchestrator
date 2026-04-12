@@ -55,7 +55,7 @@ async def get_memory():
 # ---------------------------------------------------------------------------
 _DEFAULT_REPO_DIR = str(Path(__file__).resolve().parents[2])
 _REPO_DIR = str(os.getenv("REPO_DIR", _DEFAULT_REPO_DIR))
-_SERVICE_NAME = str(os.getenv("ORCHESTRATOR_SERVICE", "llm-orchestrator"))
+_SERVICE_NAME = str(os.getenv("ORCHESTRATOR_SERVICE", "orchestrator.service"))
 _WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
 
 

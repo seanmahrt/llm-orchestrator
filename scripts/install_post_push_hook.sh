@@ -17,22 +17,42 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 TRIGGER_SCRIPT="${REPO_ROOT}/scripts/trigger_orchestrator_webhook.sh"
 
-# pre-push receives refs on stdin; keep first line for branch context if present
-FIRST_REF_LINE=""
-if IFS= read -r FIRST_REF_LINE; then
-  :
+REMOTE_NAME="${1:-origin}"
+
+# pre-push stdin format: <local_ref> <local_sha> <remote_ref> <remote_sha>
+BRANCH=""
+LOCAL_SHA=""
+if IFS=' ' read -r local_ref local_sha remote_ref remote_sha; then
+  BRANCH="${local_ref#refs/heads/}"
+  LOCAL_SHA="${local_sha}"
 fi
 
-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-LOCAL_SHA="$(git rev-parse HEAD)"
+if [[ -z "${BRANCH}" || "${BRANCH}" == "${local_ref}" ]]; then
+  BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+fi
+if [[ -z "${LOCAL_SHA}" ]]; then
+  LOCAL_SHA="$(git rev-parse HEAD)"
+fi
 
-if [[ -x "${TRIGGER_SCRIPT}" ]]; then
-  if ! "${TRIGGER_SCRIPT}" "${BRANCH}" "${LOCAL_SHA}"; then
-    echo "pre-push: webhook trigger failed" >&2
-  fi
-else
+if [[ ! -x "${TRIGGER_SCRIPT}" ]]; then
   echo "pre-push: missing trigger script at ${TRIGGER_SCRIPT}" >&2
+  exit 0
 fi
+
+# Fire-and-forget worker: wait until origin shows the pushed SHA, then trigger deploy webhook.
+(
+  for _ in $(seq 1 20); do
+    REMOTE_SHA="$(git ls-remote --heads "${REMOTE_NAME}" "refs/heads/${BRANCH}" | awk '{print $1}')"
+    if [[ "${REMOTE_SHA}" == "${LOCAL_SHA}" ]]; then
+      "${TRIGGER_SCRIPT}" "${BRANCH}" "${LOCAL_SHA}" >/tmp/llm_orchestrator_hook.log 2>&1 || true
+      exit 0
+    fi
+    sleep 1
+  done
+  echo "push-hook: commit ${LOCAL_SHA} not visible on ${REMOTE_NAME}/${BRANCH} within timeout" >> /tmp/llm_orchestrator_hook.log
+) >/dev/null 2>&1 &
+
+exit 0
 EOF
 
 chmod +x "${HOOK_PATH}"

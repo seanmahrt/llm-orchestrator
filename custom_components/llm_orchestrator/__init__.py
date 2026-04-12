@@ -30,8 +30,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_register_services(hass)
 
     # ⭐ Correct Conversation Agent registration for 2026 HA builds
-    agent = LLMOrchestratorConversationAgent(hass)
+    agent = LLMOrchestratorConversationAgent(hass, entry)
     async_set_agent(hass, entry, agent)
+
 
     return True
 

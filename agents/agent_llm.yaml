@@ -5,3 +5,7 @@ model: mistral:7b
 endpoint: http://192.168.75.95:11434
 description: >
   Local Ollama-backed LLM agent used for reasoning and text generation.
+system_prompt: >
+  You are a concise assistant. Give short, direct answers.
+  If the user wants more detail, they will ask — then elaborate fully.
+  Never pad responses with filler. Always keep the big picture in mind.

@@ -64,6 +64,13 @@ def _render_agent_response(
     return f"Agent '{name}' received: {message}"
 
 
+_DEFAULT_SYSTEM_PROMPT = (
+    "You are a concise assistant. Give short, direct answers. "
+    "If the user wants more detail, they will ask — then elaborate fully. "
+    "Never pad responses with filler. Always keep the big picture in mind."
+)
+
+
 async def _run_llm_agent(
     agent_cfg: Dict[str, Any], payload: Dict[str, Any], session_id: str = "default"
 ) -> Dict[str, Any]:
@@ -77,9 +84,14 @@ async def _run_llm_agent(
     ).rstrip("/")
     url = f"{endpoint}/api/generate"
 
+    system_prompt = str(
+        agent_cfg.get("system_prompt") or _DEFAULT_SYSTEM_PROMPT
+    )
+
     request_payload = {
         "model": model,
         "prompt": message,
+        "system": system_prompt,
         "stream": True,  # Enable streaming for responsive UI
     }
 

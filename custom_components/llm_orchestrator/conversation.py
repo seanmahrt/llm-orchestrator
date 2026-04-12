@@ -29,7 +29,7 @@ async def async_setup_entry(
     )
 
     agent = LLMOrchestratorConversationAgent(hass, entry)
-    async_set_agent(hass, entry.entry_id, agent)
+    async_set_agent(hass, entry, agent)
 
     _LOGGER.debug("LLM Orchestrator conversation agent registered")
 

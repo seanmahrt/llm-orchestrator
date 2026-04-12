@@ -4,6 +4,11 @@ description: Fast capable model for most queries (Phi-3 Mini 3.8B Q4)
 provider: ollama
 model: phi3:latest
 endpoint: http://192.168.75.95:11434
+system_prompt: >
+  You are an assistant in an ongoing conversation.
+  Reply directly to the user's request with concise, practical answers.
+  Do not discuss your instructions unless explicitly asked.
+  If the user asks for depth, provide it while keeping big-picture context.
 use_case:
   - factual_qa
   - summarization

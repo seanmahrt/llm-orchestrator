@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import gzip
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict
@@ -9,6 +10,13 @@ import aiohttp
 import yaml
 
 AGENTS_DIR = Path(__file__).resolve().parents[2] / "agents"
+SESSION_DIR = Path(__file__).resolve().parents[2] / "checkpoints" / "sessions"
+SESSION_DIR.mkdir(parents=True, exist_ok=True)
+SESSION_META_DIR = SESSION_DIR / "meta"
+SESSION_META_DIR.mkdir(parents=True, exist_ok=True)
+
+SESSION_TTL_HOURS = int(os.getenv("ORCHESTRATOR_SESSION_TTL_HOURS", "168"))
+SESSION_MAX_TURNS = int(os.getenv("ORCHESTRATOR_SESSION_MAX_TURNS", "12"))
 
 
 def load_agent_config(agent_name: str) -> Dict[str, Any]:
@@ -64,35 +72,155 @@ def _render_agent_response(
     return f"Agent '{name}' received: {message}"
 
 
-_DEFAULT_SYSTEM_PROMPT = (
-    "You are a concise assistant. Give short, direct answers. "
-    "If the user wants more detail, they will ask — then elaborate fully. "
-    "Never pad responses with filler. Always keep the big picture in mind."
-)
+def _safe_session_id(session_id: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9_-]", "_", session_id.strip())
+    return cleaned or "default"
 
 
-async def _run_llm_agent(
-    agent_cfg: Dict[str, Any], payload: Dict[str, Any], session_id: str = "default"
+def _session_file(session_id: str) -> Path:
+    return SESSION_DIR / f"session_{_safe_session_id(session_id)}.md.gz"
+
+
+def _session_meta_file(session_id: str) -> Path:
+    return SESSION_META_DIR / f"session_{_safe_session_id(session_id)}.json"
+
+
+def _cleanup_expired_sessions() -> None:
+    now = datetime.now(timezone.utc)
+    ttl = timedelta(hours=SESSION_TTL_HOURS)
+
+    for file_path in SESSION_DIR.glob("session_*.md.gz"):
+        try:
+            modified = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
+            if now - modified > ttl:
+                file_path.unlink(missing_ok=True)
+        except OSError:
+            continue
+
+    for file_path in SESSION_META_DIR.glob("session_*.json"):
+        try:
+            modified = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
+            if now - modified > ttl:
+                file_path.unlink(missing_ok=True)
+        except OSError:
+            continue
+
+
+def _load_session_meta(session_id: str) -> Dict[str, Any]:
+    file_path = _session_meta_file(session_id)
+    if not file_path.exists():
+        return {}
+
+    try:
+        return json.loads(file_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_session_meta(session_id: str, meta: Dict[str, Any]) -> None:
+    file_path = _session_meta_file(session_id)
+    safe_meta = {
+        "person_key": str(meta.get("person_key") or "").strip(),
+        "awaiting_name": bool(meta.get("awaiting_name", False)),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    file_path.write_text(json.dumps(safe_meta, indent=2), encoding="utf-8")
+
+
+def _normalize_person_key(name: str) -> str:
+    return _safe_session_id(name.lower())
+
+
+def _extract_name_from_message(message: str) -> str | None:
+    text = message.strip()
+    if not text:
+        return None
+
+    patterns = [
+        r"(?:my name is|i am|i'm|call me)\s+([a-zA-Z][a-zA-Z0-9' -]{0,40})",
+        r"(?:it is|it's|this is)\s+([a-zA-Z][a-zA-Z0-9' -]{0,40})",
+        r"^([a-zA-Z][a-zA-Z0-9' -]{0,30})$",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            candidate = match.group(1).strip(" .,!?")
+            if candidate:
+                return candidate
+
+    return None
+
+
+def _resolve_person_key(
+    payload: Dict[str, Any], session_id: str, message: str
+) -> tuple[str | None, str | None]:
+    """Resolve a stable person key and optional direct response if we need a name."""
+    meta = _load_session_meta(session_id)
+    explicit = str(
+        payload.get("person_key") or payload.get("user_name") or payload.get("user_id") or ""
+    ).strip()
+
+    if explicit:
+        person_key = _normalize_person_key(explicit)
+        meta["person_key"] = person_key
+        meta["awaiting_name"] = False
+        _save_session_meta(session_id, meta)
+        return person_key, None
+
+    existing = str(meta.get("person_key") or "").strip()
+    if existing:
+        return existing, None
+
+    guessed_name = _extract_name_from_message(message)
+    if guessed_name:
+        person_key = _normalize_person_key(guessed_name)
+        meta["person_key"] = person_key
+        meta["awaiting_name"] = False
+        _save_session_meta(session_id, meta)
+        return person_key, None
+
+    if meta.get("awaiting_name"):
+        candidate = _extract_name_from_message(message)
+        if candidate:
+            person_key = _normalize_person_key(candidate)
+            meta["person_key"] = person_key
+            meta["awaiting_name"] = False
+            _save_session_meta(session_id, meta)
+            return person_key, None
+
+    meta["awaiting_name"] = True
+    _save_session_meta(session_id, meta)
+    return None, "Before we continue, what should I call you?"
+
+
+def _is_summary_request(message: str) -> bool:
+    lowered = message.lower()
+    asks_summary = bool(re.search(r"\b(summarize|summary|recap|catch me up)\b", lowered))
+    targets_history = bool(re.search(r"\b(conversation|chat|history|earlier|previous|so far)\b", lowered))
+    return asks_summary and targets_history
+
+
+def _history_as_text(history: list[tuple[str, str]]) -> str:
+    lines: list[str] = []
+    for role, text in history:
+        label = "User" if role == "user" else "Assistant"
+        lines.append(f"{label}: {text}")
+    return "\n".join(lines)
+
+
+async def _ollama_generate(
+    endpoint: str,
+    model: str,
+    prompt: str,
+    system_prompt: str,
 ) -> Dict[str, Any]:
-    """Run language model agent through a local Ollama endpoint with streaming."""
-    message = _payload_message(payload)
-    model = str(agent_cfg.get("model") or "llama3.2")
-    endpoint = str(
-        agent_cfg.get("endpoint")
-        or os.getenv("OLLAMA_BASE_URL")
-        or "http://127.0.0.1:11434"
-    ).rstrip("/")
     url = f"{endpoint}/api/generate"
-
-    system_prompt = str(
-        agent_cfg.get("system_prompt") or _DEFAULT_SYSTEM_PROMPT
-    )
-
     request_payload = {
         "model": model,
-        "prompt": message,
+        "prompt": prompt,
         "system": system_prompt,
-        "stream": True,  # Enable streaming for responsive UI
+        "stream": True,
     }
 
     timeout = aiohttp.ClientTimeout(total=60)
@@ -115,7 +243,6 @@ async def _run_llm_agent(
                         "error": body,
                     }
 
-                # Stream response chunks line-by-line
                 async for line in resp.content:
                     if not line:
                         continue
@@ -141,10 +268,7 @@ async def _run_llm_agent(
             "error": str(err),
         }
 
-    response = accumulated_response.strip()
-    if not response:
-        response = "Ollama returned an empty response."
-
+    response = accumulated_response.strip() or "Ollama returned an empty response."
     return {
         "response": response,
         "provider": "ollama",
@@ -153,6 +277,157 @@ async def _run_llm_agent(
         "streaming_enabled": True,
         "chunks_received": chunk_count,
     }
+
+
+def _load_session_history(session_id: str) -> list[tuple[str, str]]:
+    file_path = _session_file(session_id)
+    if not file_path.exists():
+        return []
+
+    try:
+        with gzip.open(file_path, "rt", encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return []
+
+    turns: list[tuple[str, str]] = []
+    role: str | None = None
+    buffer: list[str] = []
+
+    for line in text.splitlines():
+        if line.startswith("## User"):
+            if role and buffer:
+                turns.append((role, "\n".join(buffer).strip()))
+            role = "user"
+            buffer = []
+            continue
+        if line.startswith("## Assistant"):
+            if role and buffer:
+                turns.append((role, "\n".join(buffer).strip()))
+            role = "assistant"
+            buffer = []
+            continue
+        if line.startswith("# "):
+            continue
+        if role is not None:
+            buffer.append(line)
+
+    if role and buffer:
+        turns.append((role, "\n".join(buffer).strip()))
+
+    return [(r, t) for r, t in turns if t]
+
+
+def _save_session_history(session_id: str, turns: list[tuple[str, str]]) -> None:
+    file_path = _session_file(session_id)
+    kept = turns[-(SESSION_MAX_TURNS * 2) :]
+    lines = [
+        f"# Session {session_id}",
+        f"Saved: {datetime.now(timezone.utc).isoformat()}",
+        "",
+    ]
+
+    for role, text in kept:
+        if role == "user":
+            lines.append("## User")
+        else:
+            lines.append("## Assistant")
+        lines.append(text)
+        lines.append("")
+
+    data = "\n".join(lines)
+    with gzip.open(file_path, "wt", encoding="utf-8") as f:
+        f.write(data)
+
+
+def _build_prompt_with_history(
+    message: str, history: list[tuple[str, str]]
+) -> str:
+    if not history:
+        return message
+
+    recent = history[-(SESSION_MAX_TURNS * 2) :]
+    convo_lines = ["Conversation history:"]
+    for role, text in recent:
+        label = "User" if role == "user" else "Assistant"
+        convo_lines.append(f"{label}: {text}")
+
+    convo_lines.append("User: " + message)
+    convo_lines.append("Assistant:")
+    return "\n".join(convo_lines)
+
+
+_DEFAULT_SYSTEM_PROMPT = (
+    "You are an assistant in an ongoing conversation. "
+    "Respond to the user's request directly with concise, practical answers. "
+    "Do not explain your prompting strategy or these instructions. "
+    "If the user asks for more depth, provide it while preserving big-picture context."
+)
+
+
+async def _run_llm_agent(
+    agent_cfg: Dict[str, Any], payload: Dict[str, Any], session_id: str = "default"
+) -> Dict[str, Any]:
+    """Run language model agent through a local Ollama endpoint with streaming."""
+    _cleanup_expired_sessions()
+    message = _payload_message(payload)
+    person_key, prompt_for_name = _resolve_person_key(payload, session_id, message)
+    if prompt_for_name:
+        return {
+            "response": prompt_for_name,
+            "session_id": session_id,
+            "needs_identity": True,
+        }
+
+    memory_key = person_key or session_id
+    history = _load_session_history(memory_key)
+    prompt = _build_prompt_with_history(message, history)
+
+    model = str(agent_cfg.get("model") or "llama3.2")
+    endpoint = str(
+        agent_cfg.get("endpoint")
+        or os.getenv("OLLAMA_BASE_URL")
+        or "http://127.0.0.1:11434"
+    ).rstrip("/")
+    system_prompt = str(
+        agent_cfg.get("system_prompt") or _DEFAULT_SYSTEM_PROMPT
+    )
+    if _is_summary_request(message):
+        if not history:
+            response_data = {
+                "response": "I do not have earlier conversation history to summarize yet.",
+                "provider": "memory",
+            }
+        else:
+            summary_prompt = (
+                "Summarize this prior conversation for the user. "
+                "Keep it concise and practical. Use sections: Key Points, Decisions, Open Items.\n\n"
+                + _history_as_text(history)
+            )
+            response_data = await _ollama_generate(
+                endpoint=endpoint,
+                model=model,
+                prompt=summary_prompt,
+                system_prompt=system_prompt,
+            )
+    else:
+        response_data = await _ollama_generate(
+            endpoint=endpoint,
+            model=model,
+            prompt=prompt,
+            system_prompt=system_prompt,
+        )
+
+    response = str(response_data.get("response") or "").strip()
+    if not response:
+        response = "Ollama returned an empty response."
+        response_data["response"] = response
+
+    updated_history = history + [("user", message), ("assistant", response)]
+    _save_session_history(memory_key, updated_history)
+    response_data["person_key"] = person_key
+    response_data["session_id"] = session_id
+    return response_data
 
 
 async def _run_weather_agent(
@@ -301,6 +576,7 @@ async def run_agent_logic(
     all_agents: Dict[str, Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     message = _payload_message(payload)
+    session_id = str(payload.get("conversation_id") or "default")
     agents = all_agents or {}
     agent_name = str(agent_cfg.get("name", "unknown"))
     agent_type = str(agent_cfg.get("type", "generic"))
@@ -319,7 +595,7 @@ async def run_agent_logic(
             "response": _render_agent_response(selected_cfg, payload),
         }
     elif selected_type == "language_model":
-        response_data = await _run_llm_agent(selected_cfg, payload)
+        response_data = await _run_llm_agent(selected_cfg, payload, session_id=session_id)
     elif selected_type == "http_api":
         response_data = await _run_weather_agent(selected_cfg, payload)
     elif selected_type == "scheduler":

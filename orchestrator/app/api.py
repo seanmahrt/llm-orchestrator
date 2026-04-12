@@ -12,12 +12,9 @@ router = APIRouter()
 async def run_agent(request: RunAgentRequest) -> RunAgentResponse:
     """
     Main orchestrator entrypoint.
-    Loads agent YAML and executes it with intelligent model memory management.
+    Loads agent YAML and executes it.
     Returns Home Assistant–compatible response.
     """
-    # Get session identifier from payload if available
-    session_id = request.payload.get("session_id", "default")
-    
     all_agents = load_all_agent_configs()
     agent_cfg = all_agents.get(request.agent_name)
     if not agent_cfg:
@@ -30,7 +27,6 @@ async def run_agent(request: RunAgentRequest) -> RunAgentResponse:
         agent_cfg,
         request.payload,
         all_agents=all_agents,
-        session_id=session_id,
     )
     return RunAgentResponse(agent_name=request.agent_name, result=result)
 

@@ -67,6 +67,21 @@ def _verify_github_signature(secret: str, body: bytes, sig_header: str) -> bool:
     return hmac.compare_digest(expected, sig_header)
 
 
+def _git_head_short(repo_dir: str) -> str | None:
+    """Return short commit hash for HEAD, or None if unavailable."""
+    head = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if head.returncode != 0:
+        return None
+    value = head.stdout.strip()
+    return value or None
+
+
 @router.post("/webhook/github")
 async def github_webhook(
     request: Request,
@@ -82,6 +97,8 @@ async def github_webhook(
 
     if x_github_event not in ("push", ""):
         return {"status": "ignored", "event": x_github_event}
+
+    commit_before = _git_head_short(_REPO_DIR)
 
     try:
         pull = subprocess.run(
@@ -108,8 +125,13 @@ async def github_webhook(
         timeout=15,
     )
 
+    commit_after = _git_head_short(_REPO_DIR)
+
     return {
         "status": "ok",
+        "commit_before": commit_before,
+        "commit_after": commit_after,
         "git_output": pull.stdout.strip(),
         "service_restart": restart.returncode == 0,
+        "service_restart_error": restart.stderr.strip(),
     }

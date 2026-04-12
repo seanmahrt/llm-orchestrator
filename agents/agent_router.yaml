@@ -1,12 +1,12 @@
 name: router
 type: router
-description: Smart Orchestrator router agent
+description: Smart Orchestrator router agent with intelligent LLM selection
 
 llm_routing: true
 session_memory: true
 user_context: true
-model: gpt-4o-mini
-fallback_agent: llm
+intelligent_model_selection: true
+fallback_agent: llm_fast
 confidence_threshold: 0.55
 
 routes:
@@ -16,8 +16,18 @@ routes:
     agent: weather
   - match: "temperature"
     agent: weather
-  - match: "echo"
-    agent: echo
+  - match: "schedule"
+    agent: scheduler
+  - match: "remind"
+    agent: scheduler
 
-# NEW: required for Home Assistant
+# Intelligent LLM routing based on task complexity
+llm_routes:
+  # Simple queries -> fast model (mistral:7b)
+  - patterns: ["what is", "who is", "when is", "where is", "how to", "list", "name"]
+    agent: llm_fast
+  # Complex reasoning -> capable model (llama3:8b)
+  - patterns: ["explain", "why", "analyze", "compare", "code", "write", "design", "implement"]
+    agent: llm_capable
+
 response_template: "Router selected agent '{{ selected_agent }}' for message '{{ message }}'."

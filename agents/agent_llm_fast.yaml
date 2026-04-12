@@ -1,0 +1,11 @@
+name: llm_fast
+type: language_model
+description: Fast lightweight LLM for simple queries (mistral:7b)
+provider: ollama
+model: mistral:7b
+endpoint: http://192.168.75.95:11434
+use_case:
+  - simple_qa
+  - factual_lookup
+  - summarization
+complexity_threshold: low

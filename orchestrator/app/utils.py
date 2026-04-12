@@ -220,9 +220,10 @@ def _route_message(
     message: str,
     agents: Dict[str, Dict[str, Any]],
 ) -> str:
-    """Choose an agent based on router rules and fallback logic."""
+    """Choose an agent based on router rules, intelligent LLM selection, and fallback logic."""
     lowered = message.lower()
 
+    # Traditional route matching (weather, scheduler, etc.)
     for route in router_cfg.get("routes", []):
         match = str(route.get("match", "")).strip().lower()
         target = str(route.get("agent", "")).strip()
@@ -233,11 +234,25 @@ def _route_message(
         if match in lowered and target in agents:
             return target
 
+    # Intelligent LLM routing based on task complexity
+    if router_cfg.get("intelligent_model_selection"):
+        llm_routes = router_cfg.get("llm_routes", [])
+        for llm_route in llm_routes:
+            patterns = llm_route.get("patterns", [])
+            target_agent = str(llm_route.get("agent", "")).strip()
+
+            # Check if any pattern keyword appears in the message
+            for pattern in patterns:
+                if pattern in lowered and target_agent in agents:
+                    return target_agent
+
+    # Fallback agent
     fallback = str(router_cfg.get("fallback_agent", "")).strip()
     if fallback and fallback in agents:
         return fallback
 
-    for candidate in ("llm", "scheduler", "weather"):
+    # Final fallback: check for any LLM agents
+    for candidate in ("llm_fast", "llm_capable", "llm"):
         if candidate in agents:
             return candidate
 

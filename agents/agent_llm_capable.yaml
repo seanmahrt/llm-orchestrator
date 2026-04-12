@@ -1,0 +1,12 @@
+name: llm_capable
+type: language_model
+description: Capable LLM for complex tasks (llama3:8b)
+provider: ollama
+model: llama3:8b
+endpoint: http://192.168.75.95:11434
+use_case:
+  - reasoning
+  - code_generation
+  - complex_analysis
+  - multi_step_reasoning
+complexity_threshold: high

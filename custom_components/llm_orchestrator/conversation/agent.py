@@ -6,6 +6,7 @@ from homeassistant.components.conversation import (
     ConversationInput,
     ConversationResult,
 )
+from homeassistant.components.conversation.models import ConversationResponse
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
@@ -57,7 +58,9 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
                     if resp.status != 200:
                         _LOGGER.error("Orchestrator returned HTTP %s", resp.status)
                         return ConversationResult(
-                            response="I had trouble contacting the orchestrator."
+                            response=ConversationResponse(
+                                text="I had trouble contacting the orchestrator."
+                            )
                         )
 
                     data = await resp.json()
@@ -68,10 +71,14 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
                         or "I didn't get a response from the orchestrator."
                     )
 
-                    return ConversationResult(response=response_text)
+                    return ConversationResult(
+                        response=ConversationResponse(text=response_text)
+                    )
 
         except Exception as e:
             _LOGGER.exception("Error calling orchestrator: %s", e)
             return ConversationResult(
-                response="Something went wrong talking to the orchestrator."
+                response=ConversationResponse(
+                    text="Something went wrong talking to the orchestrator."
+                )
             )

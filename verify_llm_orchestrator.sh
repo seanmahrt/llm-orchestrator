@@ -1,67 +1,80 @@
 #!/bin/bash
 
-echo "============================================================"
-echo " LLM ORCHESTRATOR INTEGRATION VERIFICATION SCRIPT"
-echo "============================================================"
-echo
+set -e
 
 BASE="custom_components/llm_orchestrator"
+OLD_FOLDER="$BASE/conversation"
+NEW_FOLDER="$BASE/conversation_agent"
+PLATFORM_FILE="$BASE/conversation.py"
 
-# Helper function
-check() {
-    if eval "$1"; then
-        echo -e "✔ PASS: $2"
-    else
-        echo -e "✘ FAIL: $2"
+echo "============================================================"
+echo " LLM ORCHESTRATOR AUTO-FIX SCRIPT"
+echo "============================================================"
+echo
+
+# 1. Verify integration folder
+if [ ! -d "$BASE" ]; then
+    echo "❌ ERROR: Integration folder not found: $BASE"
+    exit 1
+fi
+echo "✔ Integration folder found"
+
+# 2. Verify platform file
+if [ ! -f "$PLATFORM_FILE" ]; then
+    echo "❌ ERROR: conversation.py not found"
+    exit 1
+fi
+echo "✔ conversation.py found"
+
+# 3. Detect folder/file conflict
+if [ -d "$OLD_FOLDER" ]; then
+    echo "⚠ Detected folder named 'conversation/' — this conflicts with conversation.py"
+    echo "→ Renaming folder to 'conversation_agent/'"
+
+    # Remove old target if exists
+    if [ -d "$NEW_FOLDER" ]; then
+        echo "⚠ Removing old conversation_agent folder"
+        rm -rf "$NEW_FOLDER"
     fi
-}
 
-echo "Checking directory structure..."
-check "[ -d $BASE ]" "Integration folder exists: $BASE"
-check "[ -f $BASE/manifest.json ]" "manifest.json exists"
-check "[ -f $BASE/__init__.py ]" "__init__.py exists"
-check "[ -f $BASE/conversation.py ]" "conversation.py exists"
-check "[ -d $BASE/conversation ]" "conversation/ folder exists"
-check "[ -f $BASE/conversation/agent.py ]" "conversation/agent.py exists"
-check "[ -f $BASE/conversation/__init__.py ]" "conversation/__init__.py exists"
-
-echo
-echo "Checking for stale or problematic files..."
-check "[ ! -d $BASE/__pycache__ ]" "No __pycache__ folder (good)"
-check "[ ! -f $BASE/conversation.pyc ]" "No conversation.pyc"
-check "[ ! -f $BASE/conversation.pyo ]" "No conversation.pyo"
-check "[ ! -f $BASE/conversation.py.txt ]" "No hidden extension conversation.py.txt"
-check "[ ! -f $BASE/conversation.py.disabled ]" "No disabled conversation.py file"
-
-echo
-echo "Checking manifest.json content..."
-grep -q '"conversation": 
-
-\["conversation"\]
-
-' $BASE/manifest.json
-check "[ \$? -eq 0 ]" "manifest.json declares conversation platform correctly"
-
-echo
-echo "Checking import path inside conversation.py..."
-grep -q "custom_components.llm_orchestrator.conversation.agent" $BASE/conversation.py
-check "[ \$? -eq 0 ]" "conversation.py uses absolute import for agent"
-
-echo
-echo "Checking for CRLF or BOM issues..."
-if file $BASE/conversation.py | grep -q "CRLF"; then
-    echo "✘ FAIL: conversation.py contains CRLF line endings"
+    mv "$OLD_FOLDER" "$NEW_FOLDER"
+    echo "✔ Renamed: conversation/ → conversation_agent/"
 else
-    echo "✔ PASS: conversation.py uses correct LF line endings"
+    echo "✔ No conflicting folder named 'conversation/'"
 fi
 
-if file $BASE/conversation.py | grep -q "UTF-8 Unicode (with BOM)"; then
-    echo "✘ FAIL: conversation.py contains BOM"
-else
-    echo "✔ PASS: conversation.py has no BOM"
-fi
+# 4. Update import path inside conversation.py
+echo "Updating import path inside conversation.py..."
+
+sed -i \
+    "s|from custom_components.llm_orchestrator.conversation.agent|from custom_components.llm_orchestrator.conversation_agent.agent|" \
+    "$PLATFORM_FILE"
+
+echo "✔ Updated import path"
+
+# 5. Clean stale caches
+echo "Cleaning stale Python caches..."
+
+find "$BASE" -name "__pycache__" -type d -exec rm -rf {} +
+find "$BASE" -name "*.pyc" -delete
+find "$BASE" -name "*.pyo" -delete
+
+echo "✔ Cache cleaned"
+
+# 6. Verify new structure
+echo
+echo "============================================================"
+echo " FINAL STRUCTURE:"
+echo "============================================================"
+tree "$BASE"
 
 echo
 echo "============================================================"
-echo " Verification complete."
+echo " DONE."
 echo "============================================================"
+echo "Now copy the updated folder into Home Assistant:"
+echo "  /config/custom_components/llm_orchestrator/"
+echo
+echo "Then restart Home Assistant and check logs for:"
+echo "  LLM Orchestrator conversation agent registered"
+echo

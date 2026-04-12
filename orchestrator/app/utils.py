@@ -8,6 +8,8 @@ from typing import Any, Dict
 import aiohttp
 import yaml
 
+from .model_manager import get_model_manager
+
 AGENTS_DIR = Path(__file__).resolve().parents[2] / "agents"
 
 
@@ -65,9 +67,12 @@ def _render_agent_response(
 
 
 async def _run_llm_agent(
-    agent_cfg: Dict[str, Any], payload: Dict[str, Any]
+    agent_cfg: Dict[str, Any], payload: Dict[str, Any], session_id: str = "default"
 ) -> Dict[str, Any]:
     """Run language model agent through a local Ollama endpoint with streaming."""
+    # Track model usage for memory management
+    manager = get_model_manager()
+    
     message = _payload_message(payload)
     model = str(agent_cfg.get("model") or "llama3.2")
     endpoint = str(
@@ -76,6 +81,21 @@ async def _run_llm_agent(
         or "http://127.0.0.1:11434"
     ).rstrip("/")
     url = f"{endpoint}/api/generate"
+
+    # Ensure model is available in memory (with auto eviction if needed)
+    can_load = manager.ensure_model_available(model, required_for_session=session_id)
+    if not can_load:
+        return {
+            "response": (
+                f"Model {model} could not be loaded into memory. "
+                "Current memory usage is too high."
+            ),
+            "provider": "ollama",
+            "model": model,
+            "endpoint": endpoint,
+            "memory_available_mb": manager.get_available_memory_mb(),
+            "error": "insufficient_memory",
+        }
 
     request_payload = {
         "model": model,
@@ -287,6 +307,7 @@ async def run_agent_logic(
     agent_cfg: Dict[str, Any],
     payload: Dict[str, Any],
     all_agents: Dict[str, Dict[str, Any]] | None = None,
+    session_id: str = "default",
 ) -> Dict[str, Any]:
     message = _payload_message(payload)
     agents = all_agents or {}
@@ -307,7 +328,7 @@ async def run_agent_logic(
             "response": _render_agent_response(selected_cfg, payload),
         }
     elif selected_type == "language_model":
-        response_data = await _run_llm_agent(selected_cfg, payload)
+        response_data = await _run_llm_agent(selected_cfg, payload, session_id=session_id)
     elif selected_type == "http_api":
         response_data = await _run_weather_agent(selected_cfg, payload)
     elif selected_type == "scheduler":

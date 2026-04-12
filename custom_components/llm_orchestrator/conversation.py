@@ -23,6 +23,12 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
     def attribution(self):
         return {"name": "LLM Orchestrator"}
 
+    @property
+    def supported_languages(self) -> list[str]:
+        """Return the list of supported languages."""
+        # You can expand this later if needed
+        return ["en"]
+
     async def async_process(self, user_input: ConversationInput) -> ConversationResult:
         """Process a conversation request using the orchestrator router."""
 

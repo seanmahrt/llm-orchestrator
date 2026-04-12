@@ -1,5 +1,9 @@
-from fastapi import APIRouter
-from fastapi import HTTPException
+import hashlib
+import hmac
+import os
+import subprocess
+
+from fastapi import APIRouter, Header, HTTPException, Request
 
 from .models import RunAgentRequest, RunAgentResponse
 from .utils import load_all_agent_configs, run_agent_logic
@@ -43,3 +47,69 @@ async def get_memory():
     """Get memory utilization details."""
     manager = get_model_manager()
     return manager.get_memory_utilization()
+
+
+# ---------------------------------------------------------------------------
+# GitHub webhook — auto-deploy on push
+# ---------------------------------------------------------------------------
+_REPO_DIR = str(os.getenv("REPO_DIR", "/opt/llm-orchestrator"))
+_SERVICE_NAME = str(os.getenv("ORCHESTRATOR_SERVICE", "llm-orchestrator"))
+_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
+
+
+def _verify_github_signature(secret: str, body: bytes, sig_header: str) -> bool:
+    """Validate the GitHub HMAC-SHA256 X-Hub-Signature-256 header."""
+    if not sig_header.startswith("sha256="):
+        return False
+    expected = "sha256=" + hmac.new(
+        secret.encode(), body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, sig_header)
+
+
+@router.post("/webhook/github")
+async def github_webhook(
+    request: Request,
+    x_hub_signature_256: str = Header(default=""),
+    x_github_event: str = Header(default=""),
+):
+    """Receives GitHub push webhooks, pulls latest code, and restarts the service."""
+    body = await request.body()
+
+    if _WEBHOOK_SECRET:
+        if not _verify_github_signature(_WEBHOOK_SECRET, body, x_hub_signature_256):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    if x_github_event not in ("push", ""):
+        return {"status": "ignored", "event": x_github_event}
+
+    try:
+        pull = subprocess.run(
+            ["git", "pull", "--ff-only"],
+            cwd=_REPO_DIR,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="git pull timed out")
+
+    if pull.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"git pull failed: {pull.stderr.strip()}",
+        )
+
+    # Restart the systemd service so new code is loaded
+    restart = subprocess.run(
+        ["systemctl", "restart", _SERVICE_NAME],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+    return {
+        "status": "ok",
+        "git_output": pull.stdout.strip(),
+        "service_restart": restart.returncode == 0,
+    }

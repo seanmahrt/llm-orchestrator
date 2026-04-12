@@ -84,6 +84,17 @@ def _git_head_short(repo_dir: str) -> str | None:
     return value or None
 
 
+def _is_service_active(service_name: str) -> bool:
+    """Return True when the systemd unit is currently active."""
+    active = subprocess.run(
+        ["systemctl", "is-active", service_name],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return active.returncode == 0 and active.stdout.strip() == "active"
+
+
 @router.post("/webhook/github")
 async def github_webhook(
     request: Request,
@@ -127,6 +138,9 @@ async def github_webhook(
         timeout=15,
     )
 
+    service_active = _is_service_active(_SERVICE_NAME)
+    restart_ok = restart.returncode == 0 or service_active
+
     commit_after = _git_head_short(_REPO_DIR)
 
     return {
@@ -134,6 +148,8 @@ async def github_webhook(
         "commit_before": commit_before,
         "commit_after": commit_after,
         "git_output": pull.stdout.strip(),
-        "service_restart": restart.returncode == 0,
+        "service_restart": restart_ok,
+        "service_active": service_active,
+        "service_restart_code": restart.returncode,
         "service_restart_error": restart.stderr.strip(),
     }

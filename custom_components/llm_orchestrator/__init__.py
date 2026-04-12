@@ -29,11 +29,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await async_register_services(hass)
 
-    # ⭐ Register the Conversation Agent (correct signature)
+    # ⭐ Correct Conversation Agent registration for 2026 HA builds
     agent = LLMOrchestratorConversationAgent(hass)
-    async_set_agent(hass, DOMAIN, agent)
+    async_set_agent(hass, entry, agent)
 
     return True
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""

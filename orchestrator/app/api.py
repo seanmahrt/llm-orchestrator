@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import os
 import subprocess
+from pathlib import Path
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
@@ -52,7 +53,8 @@ async def get_memory():
 # ---------------------------------------------------------------------------
 # GitHub webhook — auto-deploy on push
 # ---------------------------------------------------------------------------
-_REPO_DIR = str(os.getenv("REPO_DIR", "/opt/llm-orchestrator"))
+_DEFAULT_REPO_DIR = str(Path(__file__).resolve().parents[2])
+_REPO_DIR = str(os.getenv("REPO_DIR", _DEFAULT_REPO_DIR))
 _SERVICE_NAME = str(os.getenv("ORCHESTRATOR_SERVICE", "llm-orchestrator"))
 _WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
 

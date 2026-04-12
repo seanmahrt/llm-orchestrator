@@ -5,7 +5,7 @@ from homeassistant.components.conversation import (
     AbstractConversationAgent,
     ConversationInput,
     ConversationResult,
-    ConversationResponse,   # ⭐ correct import for your HA version
+    ConversationResponse,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry

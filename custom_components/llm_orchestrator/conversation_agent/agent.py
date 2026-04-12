@@ -31,7 +31,36 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
     def supported_languages(self) -> list[str]:
         return ["en"]
 
-    async def async_process(self, user_input: ConversationInput) -> ConversationResult:
+    @staticmethod
+    def _extract_response_text(data: dict) -> str | None:
+        """Extract user-facing response text from orchestrator payloads."""
+        result = data.get("result")
+
+        if isinstance(result, str):
+            return result
+
+        if isinstance(result, dict):
+            for key in (
+                "response",
+                "output",
+                "text",
+                "message",
+                "description",
+            ):
+                value = result.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value
+
+        for key in ("response", "output", "text", "message", "description"):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+
+        return None
+
+    async def async_process(
+        self, user_input: ConversationInput
+    ) -> ConversationResult:
         text = user_input.text
         conv_id = user_input.conversation_id or "default"
 
@@ -53,7 +82,9 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=payload) as resp:
                     if resp.status != 200:
-                        _LOGGER.error("Orchestrator returned HTTP %s", resp.status)
+                        _LOGGER.error(
+                            "Orchestrator returned HTTP %s", resp.status
+                        )
 
                         intent = IntentResponse(language="en")
                         intent.async_set_speech(
@@ -68,10 +99,14 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
                     data = await resp.json()
                     _LOGGER.debug("Received from orchestrator: %s", data)
 
-                    response_text = (
-                        data.get("result", {}).get("response")
-                        or "I didn't get a response from the orchestrator."
-                    )
+                    response_text = self._extract_response_text(data)
+                    if response_text is None:
+                        _LOGGER.debug(
+                            "No conversational response text found in payload keys"
+                        )
+                        response_text = (
+                            "I didn't get a response from the orchestrator."
+                        )
 
                     intent = IntentResponse(language="en")
                     intent.async_set_speech(response_text)

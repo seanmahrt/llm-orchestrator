@@ -5,7 +5,6 @@ from homeassistant.components.conversation import (
     AbstractConversationAgent,
     ConversationInput,
     ConversationResult,
-    ConversationResponse,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
@@ -54,9 +53,14 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
                     if resp.status != 200:
                         _LOGGER.error("Orchestrator returned HTTP %s", resp.status)
                         return ConversationResult(
-                            response=ConversationResponse(
-                                text="I had trouble contacting the orchestrator."
-                            )
+                            response={
+                                "speech": {
+                                    "plain": {
+                                        "speech": "I had trouble contacting the orchestrator.",
+                                        "extra_data": {},
+                                    }
+                                }
+                            }
                         )
 
                     data = await resp.json()
@@ -68,13 +72,25 @@ class LLMOrchestratorConversationAgent(AbstractConversationAgent):
                     )
 
                     return ConversationResult(
-                        response=ConversationResponse(text=response_text)
+                        response={
+                            "speech": {
+                                "plain": {
+                                    "speech": response_text,
+                                    "extra_data": {},
+                                }
+                            }
+                        }
                     )
 
         except Exception as e:
             _LOGGER.exception("Error calling orchestrator: %s", e)
             return ConversationResult(
-                response=ConversationResponse(
-                    text="Something went wrong talking to the orchestrator."
-                )
+                response={
+                    "speech": {
+                        "plain": {
+                            "speech": "Something went wrong talking to the orchestrator.",
+                            "extra_data": {},
+                        }
+                    }
+                }
             )

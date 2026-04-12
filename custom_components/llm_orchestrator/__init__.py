@@ -16,7 +16,6 @@ async def async_setup(_hass: HomeAssistant, _config: dict) -> bool:
     """Set up the integration from YAML (not used)."""
     return True
 
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up LLM Orchestrator from a config entry."""
     hass.data.setdefault(DOMAIN, {})
@@ -28,15 +27,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     hass.data[DOMAIN][entry.entry_id] = client
 
-    # Register HA services (unchanged)
     await async_register_services(hass)
 
-    # ⭐ Register the Conversation Agent
+    # ⭐ Register the Conversation Agent (correct signature)
     agent = LLMOrchestratorConversationAgent(hass)
-    async_set_agent(hass, agent)
+    async_set_agent(hass, DOMAIN, agent)
 
     return True
-
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""

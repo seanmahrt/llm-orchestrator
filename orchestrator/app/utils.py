@@ -660,8 +660,15 @@ async def run_agent_logic(
     selected_agent = agent_name
     selected_cfg = agent_cfg
 
+    model_switch_notice = None
     if agent_type == "router":
-        selected_agent = _route_message(agent_cfg, message, agents)
+        routed_agent = _route_message(agent_cfg, message, agents)
+        if routed_agent != agent_name:
+            routed_cfg = agents.get(routed_agent, agent_cfg)
+            routed_model = routed_cfg.get("model")
+            if routed_model:
+                model_switch_notice = f"Switching to model '{routed_model}' for this request."
+        selected_agent = routed_agent
         selected_cfg = agents.get(selected_agent, agent_cfg)
 
     selected_type = str(selected_cfg.get("type", "generic"))
@@ -685,7 +692,7 @@ async def run_agent_logic(
     if not response:
         response = "No response produced."
 
-    return {
+    result = {
         "description": f"Ran agent '{agent_name}'",
         "response": response,
         "selected_agent": selected_agent,
@@ -694,3 +701,6 @@ async def run_agent_logic(
         "input": payload,
         "agent_result": response_data,
     }
+    if model_switch_notice:
+        result["model_switch_notice"] = model_switch_notice
+    return result

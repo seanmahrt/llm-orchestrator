@@ -10,8 +10,9 @@ from homeassistant.components.conversation import async_set_agent
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
-from .conversation.agent import LLMOrchestratorConversationAgent
-from .const import DOMAIN
+from custom_components.llm_orchestrator.conversation.agent import (
+    LLMOrchestratorConversationAgent,
+)
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -432,78 +432,8 @@ async def _run_llm_agent(
     """Run language model agent through a local Ollama endpoint with streaming."""
     _cleanup_expired_sessions()
     message = _payload_message(payload)
-    prior_meta = _load_session_meta(session_id)
-    was_awaiting_name = bool(prior_meta.get("awaiting_name", False))
-    person_key, prompt_for_name = _resolve_person_key(payload, session_id, message)
-    if prompt_for_name:
-        return {
-            "response": prompt_for_name,
-            "session_id": session_id,
-            "needs_identity": True,
-        }
-
-    if was_awaiting_name and _is_identity_only_reply(message):
-        response = "Thanks. I will remember that. What would you like to do next?"
-        memory_key = person_key or session_id
-        history = _load_session_history(memory_key)
-        updated_history = history + [("user", message), ("assistant", response)]
-        _save_session_history(memory_key, updated_history)
-        return {
-            "response": response,
-            "provider": "memory",
-            "person_key": person_key,
-            "session_id": session_id,
-        }
-
-    memory_key = person_key or session_id
-    history = _load_session_history(memory_key)
-    prompt = _build_prompt_with_history(message, history)
-
-    model = str(agent_cfg.get("model") or "llama3.2")
-    endpoint = str(
-        agent_cfg.get("endpoint")
-        or os.getenv("OLLAMA_BASE_URL")
-        or "http://127.0.0.1:11434"
-    ).rstrip("/")
-    system_prompt = str(
-        agent_cfg.get("system_prompt") or _DEFAULT_SYSTEM_PROMPT
-    )
-    if _is_summary_request(message):
-        if not history:
-            response_data = {
-                "response": "I do not have earlier conversation history to summarize yet.",
-                "provider": "memory",
-            }
-        else:
-            summary_prompt = (
-                "Summarize this prior conversation for the user. "
-                "Keep it concise and practical. Use sections: Key Points, Decisions, Open Items.\n\n"
-                + _history_as_text(history)
-            )
-            response_data = await _ollama_generate(
-                endpoint=endpoint,
-                model=model,
-                prompt=summary_prompt,
-                system_prompt=system_prompt,
-            )
-    else:
-        response_data = await _ollama_generate(
-            endpoint=endpoint,
-            model=model,
-            prompt=prompt,
-            system_prompt=system_prompt,
-        )
-
-    response = str(response_data.get("response") or "").strip()
-    if not response:
-        response = "Ollama returned an empty response."
-        response_data["response"] = response
-
-    updated_history = history + [("user", message), ("assistant", response)]
-    _save_session_history(memory_key, updated_history)
-    response_data["person_key"] = person_key
-    response_data["session_id"] = session_id
-    return response_data
+    # Single-user mode: identity replies are irrelevant
+    return False, None
 
 
 async def _run_weather_agent(

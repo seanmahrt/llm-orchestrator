@@ -27,21 +27,15 @@ llm_routes:
   # Cost: <1s response, minimal memory impact
   - patterns: ["hi ", "hello", "good morning", "what time", "current time", "today", "weather", "temperature"]
     agent: llm_ultra_light
-    
+  
   # Simple factual queries -> Phi-3 Mini (good balance of speed and capability)
   # Cost: 1-3s response, low memory impact
-  - patterns: ["what is", "who is", "when is", "where is", "definition", "name", "list", "explain briefly"]
+  - patterns: ["what is", "who is", "when is", "where is", "definition", "name", "list", "explain briefly", "explain", "why", "analyze", "compare", "code", "write", "design", "implement", "debug", "refactor"]
     agent: llm_phi_fast
-    
-  # Complex reasoning, coding, analysis -> Mistral 7B (highest capability)
-  # Cost: 3-10s response, higher memory but necessary for quality
-  - patterns: ["explain", "why", "analyze", "compare", "code", "write", "design", "implement", "debug", "refactor"]
-    agent: llm_capable
 
 # Fallback hierarchy for unavailable models
 fallback_hierarchy:
   - llm_phi_fast    # If primary fails, try Phi-3 Mini
-  - llm_fast        # Then Mistral 7B (fast model)
   - llm_ultra_light # Then TinyLlama
 
 response_template: "Router selected agent '{{ selected_agent }}' for message '{{ message }}'."

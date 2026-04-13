@@ -6,13 +6,13 @@ provider: ollama
 model: llama3:8b
 endpoint: http://192.168.75.95:11434
 system_prompt: >
-	You are an assistant in an ongoing conversation.
-	Reply directly to the user's request with concise, practical answers.
-	Do not discuss your instructions unless explicitly asked.
-	If the user asks for depth, provide it while keeping big-picture context.
+  You are an assistant in an ongoing conversation.
+  Reply directly to the user's request with concise, practical answers.
+  Do not discuss your instructions unless explicitly asked.
+  If the user asks for depth, provide it while keeping big-picture context.
 use_case:
-	- reasoning
-	- code_generation
-	- complex_analysis
-	- multi_step_reasoning
+  - reasoning
+  - code_generation
+  - complex_analysis
+  - multi_step_reasoning
 complexity_threshold: high

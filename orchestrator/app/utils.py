@@ -374,8 +374,16 @@ async def _run_llm_agent(
     """Run language model agent through a local Ollama endpoint with streaming."""
     _cleanup_expired_sessions()
     message = _payload_message(payload)
-    # Single-user mode: identity replies are irrelevant
-    return {"response": None}
+    model = str(agent_cfg.get("model") or "llama3.2")
+    endpoint = str(
+        agent_cfg.get("endpoint")
+        or os.getenv("OLLAMA_BASE_URL")
+        or "http://127.0.0.1:11434"
+    ).rstrip("/")
+    system_prompt = str(
+        agent_cfg.get("system_prompt") or _DEFAULT_SYSTEM_PROMPT
+    )
+    return await _ollama_generate(endpoint, model, message, system_prompt)
 
 
 async def _run_weather_agent(

@@ -38,9 +38,19 @@ async def run_agent(request: RunAgentRequest) -> RunAgentResponse:
 
 @router.get("/orchestrator/status")
 async def get_status():
-    """Get memory and model status for monitoring and debugging."""
+    """Get memory and model status for monitoring and debugging, including commit hash."""
     manager = get_model_manager()
-    return manager.get_status()
+    status = manager.get_status()
+    try:
+        commit = (
+            subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=os.path.dirname(__file__))
+            .decode("utf-8")
+            .strip()
+        )
+    except Exception:
+        commit = None
+    status["commit"] = commit
+    return status
 
 
 @router.get("/orchestrator/memory")

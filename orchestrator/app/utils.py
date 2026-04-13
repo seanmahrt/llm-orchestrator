@@ -433,7 +433,7 @@ async def _run_llm_agent(
     _cleanup_expired_sessions()
     message = _payload_message(payload)
     # Single-user mode: identity replies are irrelevant
-    return False, None
+    return {"response": None}
 
 
 async def _run_weather_agent(

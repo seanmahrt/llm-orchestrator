@@ -235,10 +235,7 @@ async def _ollama_generate(
         "model": model,
         "prompt": prompt,
         "system": system_prompt,
-        "stream": OLLAMA_STREAM,
-        "options": {
-            "num_predict": OLLAMA_MAX_TOKENS,
-        },
+        "stream": False,  # Disable streaming for compatibility
     }
 
     timeout = aiohttp.ClientTimeout(total=OLLAMA_TIMEOUT_SECONDS)

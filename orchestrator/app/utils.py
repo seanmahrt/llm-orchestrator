@@ -239,10 +239,6 @@ async def _ollama_generate(
     }
 
     timeout = aiohttp.ClientTimeout(total=OLLAMA_TIMEOUT_SECONDS)
-    accumulated_response = ""
-    chunk_count = 0
-    done_received = False
-
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, json=request_payload) as resp:
@@ -258,59 +254,20 @@ async def _ollama_generate(
                         "endpoint": endpoint,
                         "error": body,
                     }
-
-                if not OLLAMA_STREAM:
-                    body = await resp.json(content_type=None)
-                    response_text = str(body.get("response") or "").strip()
-                    if not response_text:
-                        response_text = "Ollama returned an empty response."
-                    return {
-                        "response": response_text,
-                        "provider": "ollama",
-                        "model": model,
-                        "endpoint": endpoint,
-                        "streaming_enabled": False,
-                        "chunks_received": 1,
-                        "done_received": bool(body.get("done", False)),
-                        "max_tokens": OLLAMA_MAX_TOKENS,
-                    }
-
-                buffer = ""
-                async for raw in resp.content.iter_chunked(4096):
-                    if not raw:
-                        continue
-                    buffer += raw.decode("utf-8", errors="ignore")
-
-                    while "\n" in buffer:
-                        line, buffer = buffer.split("\n", 1)
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            chunk = json.loads(line)
-                        except ValueError:
-                            continue
-
-                        chunk_text = str(chunk.get("response") or "")
-                        if chunk_text:
-                            accumulated_response += chunk_text
-                            chunk_count += 1
-                        if bool(chunk.get("done", False)):
-                            done_received = True
-
-                trailing = buffer.strip()
-                if trailing:
-                    try:
-                        chunk = json.loads(trailing)
-                        chunk_text = str(chunk.get("response") or "")
-                        if chunk_text:
-                            accumulated_response += chunk_text
-                            chunk_count += 1
-                        if bool(chunk.get("done", False)):
-                            done_received = True
-                    except ValueError:
-                        pass
-
+                body = await resp.json(content_type=None)
+                response_text = str(body.get("response") or "").strip()
+                if not response_text:
+                    response_text = "Ollama returned an empty response."
+                return {
+                    "response": response_text,
+                    "provider": "ollama",
+                    "model": model,
+                    "endpoint": endpoint,
+                    "streaming_enabled": False,
+                    "chunks_received": 1,
+                    "done_received": bool(body.get("done", False)),
+                    "max_tokens": OLLAMA_MAX_TOKENS,
+                }
     except (aiohttp.ClientError, TimeoutError) as err:
         return {
             "response": (
@@ -323,18 +280,6 @@ async def _ollama_generate(
             "endpoint": endpoint,
             "error": str(err),
         }
-
-    response = accumulated_response.strip() or "Ollama returned an empty response."
-    return {
-        "response": response,
-        "provider": "ollama",
-        "model": model,
-        "endpoint": endpoint,
-        "streaming_enabled": OLLAMA_STREAM,
-        "chunks_received": chunk_count,
-        "done_received": done_received,
-        "max_tokens": OLLAMA_MAX_TOKENS,
-    }
 
 
 def _load_session_history(session_id: str) -> list[tuple[str, str]]:
